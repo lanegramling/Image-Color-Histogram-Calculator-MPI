@@ -1,0 +1,32 @@
+
+My Design Process:
+
+- Initialization 
+    Upon initialization, all obligatory MPI setup calls are made and the input parameters are interpreted.
+    Afterwards, rank_0_work and rank_i_work run in their respective ranks.
+    
+- Setup & Rank 0 work
+    Rank 0 uses the provided ImageReader to read in all N images. Then, it distributes the work size for each rank as a single integer,
+    followed by the raw data of a given image's Packed3DArray (in the form of a 3d unsigned char array) to be reconstructed into a 
+    newly allocated Packed3DArray in its respective rank.
+
+- Rank i work
+    - Compute RGB Histograms
+        Now that each rank has their work assignments, compute the RGB Histogram for the i'th image in rank i. (Rank 0 does its own work too, within rank_0_work).
+        Next, allocate space in each rank for N * (3 * 256)  Color histograms to be stored in a 3 dimensional array. This will be used as the receive buffer in an Allgather
+        call which distributes each rank's computed RGB Histogram of size [3][256] to each other rank. (histogram_i would be the contents of rank i's send buffer).
+    - Compute Similarity Vector for rank i (0 to N)
+        Now, all ranks have all computed RGB histograms, so each is capable of computing its similarity vector of form [similarityToImage0,...,similarityToImageN-1].
+ 
+ - Rank 0 - Final Results
+    Finally, rank 0 uses MPI_Gather to place each rank i's size N similarityVector into a receive buffer taking the form of an NxN Matrix of each image's similarity with each other. 
+    The result will be a symmetric matrix of the following form:
+    
+                    image0     image1       image...    imageN
+       image0 |     1           ....             ....            ....        
+       image1 |   ....            1              ....            ....
+       image...|   ....           ....              1             ....
+       imageN |   ....           ....             ....              1
+       
+       
+            -> where each index represents the similarity between imageX and imageY. This will be a value from 0 to 1.
